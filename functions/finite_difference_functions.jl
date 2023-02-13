@@ -235,5 +235,3 @@ function make_D4(rvecs)
     return D4
 
 end
-
-

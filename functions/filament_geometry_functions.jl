@@ -240,3 +240,46 @@ function find_distance_to_filament(vec,rvecs)
     return mindist, mindistind
 end
 
+
+function make_cross_product(a,b)
+    # cross product of two vector functions a,b, each represented as n vectors
+    # returns an n vector
+    
+    n = size(a,1)
+    c = zeros(size(a))
+
+    for i = 1:n
+        avec = a[i,:]
+        bvec = b[i,:]
+
+        c[i,:] = cross(avec,bvec)
+    end
+    
+    return c
+end
+
+
+
+function make_cross_product3n(a,b)
+    # cross product of two vector functions a,b, each represented as 3n vectors
+    # returns a 3n vector
+    
+    n = div(size(a,1), 3)
+    c = zeros(size(a))
+
+    for i = 1:n
+        ax = a[3*(i-1) + 1]
+        ay = a[3*(i-1) + 2]
+        az = a[3*(i-1) + 3]
+
+        bx = b[3*(i-1) + 1]
+        by = b[3*(i-1) + 2]
+        bz = b[3*(i-1) + 3]
+
+        c[3*(i-1) + 1] = ay*bz - az*by
+        c[3*(i-1) + 2] = az*bx - ax*bz
+        c[3*(i-1) + 3] = ax*by - ay*bx
+    end
+    
+    return c
+end
