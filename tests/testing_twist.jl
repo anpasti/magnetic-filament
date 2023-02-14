@@ -20,7 +20,7 @@ omega = 10* Cm
 
 global lambda = -(2 - 1)#-(make_ζratio_wall(d,ϵ) - 1)  # -(zeta_perp / zeta_par - 1) : anisotropy of drag
 global T = 2*pi / abs(omega)
-global n = 50#50#80 # number of points - each corresponds to an length element of a rod.
+global n = 30#50#80 # number of points - each corresponds to an length element of a rod.
 global h = 1/n # distance between 2 pts # takes into account the half a point extention on each side
 
 
@@ -35,75 +35,108 @@ println("n = ", n)
 # initialize the shaped
 global rvecs = zeros(n,3)
 global rvecs[:,1] = range(-0.5,0.5,length=n)
-#rvecs[:,2] = 0.01 * cos.( pi*rvecs[:,1] )#exp.( -(rvecs[:,1]).^2 / 0.2^2 )
-#rvecs[:,3] = 0.01 * sin.( pi*rvecs[:,1] ) #d*ones(size(rvecs[:,3]))
+rvecs[:,2] = 0.01*exp.( -(rvecs[:,1]).^2 / 0.2^2 ) #0.01 * cos.( pi*rvecs[:,1] )#exp.( -(rvecs[:,1]).^2 / 0.2^2 )
+#rvecs[:,3] = 0.001 * sin.( pi*rvecs[:,1] ) #d*ones(size(rvecs[:,3]))
 renormalize_length!(rvecs)
 
-# differentiation matrix and magentic force
+# initialize twist
+zeta_rot = 0.003 # D in my notes
+C = 1. # twist elasticity constant
+twist_omega = 15/zeta_rot # one end rotation velocity
+#om_twist = -rvecs[:,1] * twist_omega*zeta_rot / C#-(rvecs[:,1] .- 0.5) * twist_omega*zeta_rot / C # initial linear distribution
+om_twist = -twist_omega*zeta_rot / C * (rvecs[:,1] .- 0.5)
+
+println("max_om_twist = ", maximum(om_twist))
+
+# differentiation matrix for elastic force
 global Mmat = make_Mmat_ceb(h,n)
+# differentiation matrices
+D1 = make_D1(rvecs)/h
+D2_BC = make_D2_BC(rvecs)/h^2 # with boundary condition 0 at ends
+D2 = make_D2(rvecs)/h^2
 
-params = [lambda, h, n, omega, Cm, Mmat]
+params = [lambda, h, n, omega, Cm, zeta_rot, C, Mmat, D1, D2_BC, twist_omega]
 
-function velocity_prec!(dr_arr,r_arr,params,t)
+function velocity!(du_arr,u_arr,params,t)
     lambda = params[1]
     h = params[2]
     n = params[3]
     omega = params[4]
     Cm = params[5]
-    Mmat = params[6]
-    T = 2*pi / abs(omega)
+    zeta_rot = params[6]
+    C = params[7]
+    Mmat = params[8]
+    D1 = params[9]
+    D2_BC = params[10]
+    twist_omega = params[11]
+    
+    rvecs = reshape(u_arr[1:3*n], 3, n)'
+    r_arr = reshape(rvecs',3*n,1)
+    om_twist = u_arr[3*n+1:end]
+    #om_twist[1] = 0
+    #om_twist[end] = 0 
 
-    rvecs = reshape(r_arr, 3, n)'
+    D1om_twist = D1*om_twist
+    #D1om_twist[1] = -twist_omega * zeta_rot / C # set boundary condition
+    #D1om_twist[end] = -twist_omega * zeta_rot / C # set boundary condition
+    D2om_twist = D1*D1om_twist
+
     P, μ = make_proj_operator_mobility_tensor(rvecs, lambda, h)
     P = μ*P
-    hvec = -normalize([cos(omega*t),sin(omega*t),1/sqrt(2)]) # magic angle
+    #hvec = -normalize([cos(omega*t),sin(omega*t),1/sqrt(2)]) # magic angle
     
-    Mmat_Fparamag = make_Mmat_Fparamag(h,n,hvec, Cm)
+    #Mmat_Fparamag = make_Mmat_Fparamag(h,n,hvec, Cm)
 
-    dr_arr[:] = P*((Mmat + Mmat_Fparamag)*r_arr)
+    ftwist_arr = make_ftwist_arr(h, om_twist, rvecs, D1, D2_BC)
+
+    du_arr[1:3*n] = P*(Mmat*r_arr + C*ftwist_arr)
+    vvecs = reshape(du_arr[1:3*n], 3, n)'
+    du_arr[3*n+1:end] = C / zeta_rot * D2om_twist + make_dot_product(make_cross_product(D1*rvecs,D2_BC*rvecs), D1*vvecs)
 end
 
 # plot first frame
-display(Plots.plot(rvecs[:,1],rvecs[:,2],aspect_ratio=:equal))
-for period_n = 1:5 # run 5 periods, renormalize length every period
-    global rvecs
-    println("period = ", period_n)
-    tspan = (T*(period_n-1),T*period_n)
-    r_arr0 = reshape(rvecs',3*n,1)
-    prob = ODEProblem(velocity_prec!,r_arr0,tspan,params)
-    @time global sol = solve(prob,alg_hints=[:stiff],saveat=T/10,reltol=1e-12, abstol=1e-12)
+display(Plots.plot(rvecs[:,1],rvecs[:,2],rvecs[:,3],aspect_ratio=:equal))
 
-    for (i, u) = enumerate(sol.u)
-        local rvecs = reshape(u, 3, n)'
-        local t = sol.t[i]
-        local hvec = -normalize([cos(omega*t),sin(omega*t),1/sqrt(2)])
-        #println(t/T)
-        display(Plots.plot!(rvecs[:,1],rvecs[:,2],aspect_ratio=:equal,label="", color = :red))
-        display(Plots.plot!([0,hvec[1]/4],[0,hvec[2]/4],arrow=true,color=:black,linewidth=2,label=""))
-        # Plots.plot!(rvecs[:,1],rvecs[:,2],rvecs[:,3],aspect_ratio=:equal,label="", color = :red)
-        # display(Plots.plot!([0,hvec[1]/4],[0,hvec[2]/4], [0,hvec[3]/4],arrow=true,color=:black,linewidth=2,label=""))
+global rvecs
+tend = 0.003/20
+tspan = (0,tend)
+r_arr0 = vcat(reshape(rvecs',3*n,1), om_twist ) # last n elements in varaibles is the om_twist
+prob = ODEProblem(velocity!,r_arr0,tspan,params)
+@time global sol = solve(prob,alg_hints=[:stiff],saveat=tend/20,reltol=1e-10, abstol=1e-10)
 
-        # tvecs = make_tvecs(rvecs)
-        # if dot(tvecs[end,:],hvec) >= 0 # nez kāpēc vajag šādu zīmi
-        #     println("backnforth motion")
-        #     global backnforth = true
-        #     global converged = false
-        # end
-    end
+for (i, u) = enumerate(sol.u)
+    local rvecs = reshape(u[1:3*n], 3, n)'
+    local t = sol.t[i]
+    #local hvec = -normalize([cos(omega*t),sin(omega*t),1/sqrt(2)])
+    #println(t/T)
+    display(Plots.plot!(rvecs[:,1],rvecs[:,2],rvecs[:,3],aspect_ratio=:equal,label="", color = :red))
+    #display(Plots.plot!([0,hvec[1]/4],[0,hvec[2]/4],arrow=true,color=:black,linewidth=2,label=""))
+    # Plots.plot!(rvecs[:,1],rvecs[:,2],rvecs[:,3],aspect_ratio=:equal,label="", color = :red)
+    # display(Plots.plot!([0,hvec[1]/4],[0,hvec[2]/4], [0,hvec[3]/4],arrow=true,color=:black,linewidth=2,label=""))
 
-    global t = sol.t[end]
-    println("t/T = ", t/T)
-    global hvec = -normalize([cos(omega*t),sin(omega*t),1/sqrt(2)])
-    #renormalize length
-    global rvecs = reshape(sol.u[end], 3, n)'
-    println(make_length_of_filament(rvecs))
-    renormalize_length!(rvecs)
-
+    # tvecs = make_tvecs(rvecs)
+    # if dot(tvecs[end,:],hvec) >= 0 # nez kāpēc vajag šādu zīmi
+    #     println("backnforth motion")
+    #     global backnforth = true
+    #     global converged = false
+    # end
 end
 
-rvecsend = reshape(sol.u[end], 3, n)'
+global t = sol.t[end]
+println("t/T = ", t/T)
+#renormalize length
+global rvecs = reshape(sol.u[end][1:3*n], 3, n)'
+println(make_length_of_filament(rvecs))
+renormalize_length!(rvecs)
+global om_twist = sol.u[end][3*n+1:end]
+
+println("edn max_om_twist = ", maximum(om_twist))
+
+rvecsend = reshape(sol.u[end][1:3*n], 3, n)'
 Plots.plot(rvecsend[:,1],rvecsend[:,2],rvecsend[:,3],aspect_ratio=:equal,label="", color = :red)
-display(Plots.plot!([0,hvec[1]/4],[0,hvec[2]/4], [0,hvec[3]/4],arrow=true,color=:black,linewidth=2,label=""))
+
+# plot(rvecsend[:,2],rvecsend[:,3])
+# display(Plots.plot!([0,hvec[1]/4],[0,hvec[2]/4], [0,hvec[3]/4],arrow=true,color=:black,linewidth=2,label=""))
 
 # h5open("./phase_space_zeta_2/Cm_$(Cm)_w_$(omega).h5", "w") do file
 #     write(file, "n", n) 

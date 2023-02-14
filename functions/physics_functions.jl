@@ -300,6 +300,31 @@ function make_Mmat_spont_curv(h,n)
     return -Mmat / h
 end
 
+
+
+function make_ftwist_arr(h, om_twist, rvecs, D1, D2)
+    # force doe to twist
+    # such that v_arr = P*(C*ftwist_arr)
+
+    n = size(rvecs,1)
+
+    rvecsl = D1*rvecs
+    rvecsll = D2*rvecs
+    rvecs_cross_term = make_cross_product(rvecsl,rvecsll)
+
+    Force = om_twist .* rvecs_cross_term
+    force_density = D1 * Force
+
+    fvecs = zeros(size(rvecs))
+    fvecs[2:end-1] = force_density[2:end-1] 
+    fvecs[1] = Force[1] * h
+    fvecs[end] = -Force[end] *h
+
+    return reshape(fvecs',3*n,1)
+end
+
+
+
 function make_proj_operator(rvecs)
     #projects velocities to not extend the chain#
     # https://arxiv.org/pdf/0903.5178.pdf #

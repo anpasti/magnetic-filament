@@ -283,3 +283,20 @@ function make_cross_product3n(a,b)
     
     return c
 end
+
+function make_dot_product(a,b)
+    # dot product of two vector functions a,b, each represented as n vectors
+    # returns a scalar function as an n vector
+    
+    n = size(a,1)
+    c = zeros(n)
+
+    for i = 1:n
+        avec = a[i,:]
+        bvec = b[i,:]
+
+        c[i] = dot(avec,bvec)
+    end
+    
+    return c
+end
