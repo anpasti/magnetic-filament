@@ -301,9 +301,36 @@ function make_Mmat_spont_curv(h,n)
 end
 
 
+function make_frelax_arr(h,rvecs, D1)
+    # force due to magnetic relaxation in a fast precessing field
+    # fiels is precessing around z axis direcion
+    # such that v_arr = P*(Cmrel*frelax_arr)
+
+    n = size(rvecs,1)
+
+    rvecsl = D1*rvecs
+    ez = [0.,0.,1.]
+
+    Force = zeros(size(rvecs))
+    for i = 1:n
+        Force[i,:] = - cross(ez,rvecsl[i,:])
+    end
+
+    force_density = D1 * Force
+
+    fvecs = zeros(size(rvecs))
+    fvecs[2:end-1,:] = force_density[2:end-1,:] 
+    fvecs[1,:] = Force[1,:] / h
+    fvecs[end,:] = -Force[end,:] / h
+
+    return reshape(fvecs',3*n,1)
+end
+
+
+
 
 function make_ftwist_arr(h, om_twist, rvecs, D1, D2)
-    # force doe to twist
+    # force due to twist
     # such that v_arr = P*(C*ftwist_arr)
 
     n = size(rvecs,1)
@@ -316,13 +343,69 @@ function make_ftwist_arr(h, om_twist, rvecs, D1, D2)
     force_density = D1 * Force
 
     fvecs = zeros(size(rvecs))
-    fvecs[2:end-1] = force_density[2:end-1] 
-    fvecs[1] = Force[1] * h
-    fvecs[end] = -Force[end] *h
+    fvecs[2:end-1,:] = force_density[2:end-1,:] 
+    # twist deos not appear in BC, because r_ll = 0
+    # fvecs[1,:] = Force[1,:] / h
+    # fvecs[end,:] = -Force[end,:] / h
 
     return reshape(fvecs',3*n,1)
 end
 
+
+function make_ftwist_arr_manual(h, om_twist, rvecs)
+    # force due to twist
+    # such that v_arr = P*(C*ftwist_arr)
+
+    n = size(rvecs,1)
+
+    rvecsl = zeros(size(rvecs))
+    rvecsll = zeros(size(rvecs))
+    rvecslll = zeros(size(rvecs))
+
+    om_twistl = zeros(size(om_twist))
+
+    for i = 1:n
+        # first derivatives
+        if i == 1
+            #rvecsl[i,:] = (-rvecs[i,:] + rvecs[i+1,:])/h # + O(h)
+            #om_twistl[i] = (-om_twistl[i] + om_twistl[i+1])/h # + O(h)
+        elseif i < n
+            rvecsl[i,:] = (-0.5*rvecs[i-1,:] + 0.5*rvecs[i+1,:])/h # + O(h^2)
+            om_twistl[i] = (-0.5*om_twist[i-1] + 0.5*om_twist[i+1])/h # + O(h^2)
+        elseif i == n
+            #rvecsl[i,:] = (-rvecs[i-1,:] + rvecs[i,:])/h # + O(h)
+            #om_twistl[i] = (-om_twistl[i-1] + om_twistl[i])/h # + O(h)
+        end
+
+        # second derivatives
+        if i == 1
+            #rvecsll[i,:] = 0#(rvecs[i,:] - 2*rvecs[i+1,:] + rvecs[i+2,:])/h^2 # + O(h)
+        elseif i < n
+            rvecsll[i,:] = (rvecs[i-1,:] - 2*rvecs[i,:] + rvecs[i+1,:])/h^2 # + O(h^2)
+        elseif i == n
+            #rvecsll[i,:] = 0 #(rvecs[i-2,:] - 2*rvecs[i-1,:] + rvecs[i,:])/h^2 # + O(h)
+        end
+
+        # third derivatives
+        if i == 1
+            #rvecslll[i,:] = (rvecs[i,:] - 2*rvecs[i+1,:] + rvecs[i+2,:])/h^2 # + O(h)
+        elseif i==2
+            rvecslll[i,:] = (0.5*rvecs[i,:] - rvecs[i+1,:] + 0.5*rvecs[i+2,:])/h^3 # + O(h^2)
+        elseif i < n-1
+            rvecslll[i,:] = (-0.5*rvecs[i-2,:] + rvecs[i-1,:] - rvecs[i+1,:] + 0.5*rvecs[i+2,:])/h^3 # + O(h^2)
+        elseif i == n-1
+            rvecslll[i,:] = -(0.5*rvecs[i-2,:] - rvecs[i-1,:] + 0.5*rvecs[i,:])/h^3 # + O(h^2)
+        elseif i == n
+            #rvecslll[i,:] = (rvecs[i-2,:] - 2*rvecs[i-1,:] + rvecs[i,:])/h^2 # + O(h)
+        end
+
+    end
+
+    fvecs = om_twistl .* make_cross_product(rvecsl,rvecsll) + om_twist .* make_cross_product(rvecsl,rvecslll)
+    #println(fvecs)
+    println(om_twistl)
+    return reshape(fvecs',3*n,1)
+end
 
 
 function make_proj_operator(rvecs)
@@ -590,3 +673,49 @@ function make_ζratio_wall(d,ϵ)
 end
 
 
+function make_paramagnetic_moments(rvecs,hvec,h,χ_perp,χ_par)
+    # magnetic moments induced in filament elements 
+    # m ~ χH*Δl*πa^2, but have to take into account anisotropy
+    # χ - susceptibility
+
+    n = size(rvecs,1)
+
+    tvecs = make_tvecs(rvecs)
+    htvecs = zeros(size(rvecs))
+    hnvecs = zeros(size(rvecs))
+
+    for i = 1:n
+        htvecs[i,:] = dot(hvec,tvecs[i,:])*tvecs[i,:]
+        hnvecs[i,:] = hvec - htvecs[i,:] 
+    end
+
+    mvecs = 1/(1-χ_perp/χ_par)*htvecs + 1/(χ_par/χ_perp-1)*hnvecs
+    return -mvecs * h
+end
+
+function make_dipole_force(rvecs,mvecs,Cdip,h)
+    # force per unit length on a line segment due to dipole-dipole interactions
+    # Cdip - charecteristic dipole force
+    # Cdip/Cm = 3π/2 * a^2/L^2 (χ_par - χ_perp) for paramagnetic filament
+
+    n = size(rvecs,1)
+    fdip_vecs = ones(size(rvecs))
+
+    for i = 1:n
+        for j = 1:n
+            if i != j
+                Rvec = (rvecs[i,:] - rvecs[j,:])
+                R = norm(Rvec)
+                Rvec_unit = (rvecs[i,:] - rvecs[j,:]) / R
+                fdip_vecs[i,:] += 1/R^4 * (
+                    dot(mvecs[j,:],Rvec_unit)*mvecs[i,:] +
+                    dot(mvecs[i,:],Rvec_unit)*mvecs[j,:] +
+                    dot(mvecs[i,:],mvecs[j,:])*Rvec_unit -
+                    5*dot(mvecs[i,:],Rvec_unit)*dot(mvecs[j,:],Rvec_unit) * Rvec_unit
+                )
+            end
+        end
+    end
+
+    return fdip_vecs*Cdip/h
+end
