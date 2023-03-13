@@ -21,7 +21,7 @@ include("../functions/filament_geometry_functions.jl")
 θ = θmagic+0.08 #+0.2 # precession angle
 
 # torque density due to finite relaxation
-Cmrel0 = 30
+Cmrel0 = 20
 Cmrel = Cmrel0 * ωτ/(1+ωτ^2) * sin(θ)
 
 # Magnetic force
@@ -35,20 +35,20 @@ C = 1
 lambda = -(2 - 1)#-(make_ζratio_wall(d,ϵ) - 1)  # -(zeta_perp / zeta_par - 1) : anisotropy of drag
 
 # number of discretized elements
-n = 51#50#80 # number of points - each corresponds to an length element of a rod.
+n = 31#50#80 # number of points - each corresponds to an length element of a rod.
 h = 1/n # distance between 2 pts # takes into account the half a point extention on each side
 
 # # initialize the shape
-rvecs = zeros(n,3)
-rvecs[:,1] = 0.01*range(-0.5,0.5,length=n)
-#rvecs[:,2] = range(-0.5,0.5,length=n)
-rvecs[:,3] = range(-0.5,0.5,length=n)
-
-# # initialize the shape
 # rvecs = zeros(n,3)
-# rvecs[:,1] = cosh.(range(-0.5,0.5,length=n)).^4
+# rvecs[:,1] = 0.01*range(-0.5,0.5,length=n)
 # #rvecs[:,2] = range(-0.5,0.5,length=n)
 # rvecs[:,3] = range(-0.5,0.5,length=n)
+
+# # initialize the shape
+rvecs = zeros(n,3)
+rvecs[:,1] = 0.01*cosh.(range(-0.5,0.5,length=n)).^4 + 0.001*range(-0.5,0.5,length=n)
+#rvecs[:,2] = range(-0.5,0.5,length=n)
+rvecs[:,3] = range(-0.5,0.5,length=n)
 
 # initialize the shape
 # global rvecs = zeros(n,3)
@@ -134,7 +134,7 @@ for (i, u) = enumerate(sol.u)
     local t = sol.t[i]
 
     display(Plots.plot!(rvecs[:,1],rvecs[:,2],rvecs[:,3],aspect_ratio=:equal,label="", color = :red))
-    
+    #display(Plots.plot(rvecs[:,1],rvecs[:,2],aspect_ratio=:equal))
     rvecs = rvecs .- make_center_of_mass(rvecs)'
     maxdevs[i] = sqrt(maximum(rvecs[:,1])^2 + maximum(rvecs[:,2])^2)
     println("max deviation = ", maxdevs[i])
