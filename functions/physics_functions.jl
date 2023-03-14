@@ -142,7 +142,7 @@ end
 function make_Mmat_ceb(h,n)
     # manuāli ar roku kā Cēbers
     # Mmat 3n x 3n such that M*r_arr = F_nonmagnetic_arr
-
+    # not expensive if not sparse for n=61
     Mmat = zeros(3*n,3*n)
 
 
@@ -318,8 +318,7 @@ function make_frelax_arr(h,rvecs, D1)
 
     force_density = D1 * Force
 
-    fvecs = zeros(size(rvecs))
-    fvecs[2:end-1,:] = force_density[2:end-1,:] 
+    fvecs = force_density
     fvecs[1,:] = Force[1,:] / h
     fvecs[end,:] = -Force[end,:] / h
 
@@ -327,6 +326,30 @@ function make_frelax_arr(h,rvecs, D1)
 end
 
 
+# function make_frelax_arr_old(h,rvecs, D1)
+#     # force due to magnetic relaxation in a fast precessing field
+#     # fiels is precessing around z axis direcion
+#     # such that v_arr = P*(Cmrel*frelax_arr)
+
+#     n = size(rvecs,1)
+
+#     rvecsl = D1*rvecs
+#     ez = [0.,0.,1.]
+
+#     Force = zeros(size(rvecs))
+#     for i = 1:n
+#         Force[i,:] = - cross(ez,rvecsl[i,:])
+#     end
+
+#     force_density = D1 * Force
+
+#     fvecs = zeros(size(rvecs))
+#     fvecs[2:end-1,:] = force_density[2:end-1,:] 
+#     fvecs[1,:] = Force[1,:] / h
+#     fvecs[end,:] = -Force[end,:] / h
+
+#     return reshape(fvecs',3*n,1)
+# end
 
 
 function make_ftwist_arr(h, om_twist, rvecs, D1, D2)
@@ -342,11 +365,10 @@ function make_ftwist_arr(h, om_twist, rvecs, D1, D2)
     Force = om_twist .* rvecs_cross_term
     force_density = D1 * Force
 
-    fvecs = zeros(size(rvecs))
-    fvecs[2:end-1,:] = force_density[2:end-1,:] 
+    fvecs = force_density
     # twist deos not appear in BC, because r_ll = 0
-    # fvecs[1,:] = Force[1,:] / h
-    # fvecs[end,:] = -Force[end,:] / h
+    fvecs[1,:] = [0.,0.,0.]
+    fvecs[end,:] = [0.,0.,0.]
 
     return reshape(fvecs',3*n,1)
 end
@@ -445,6 +467,21 @@ function make_proj_operator_mobility_tensor(rvecs,lambda,h)
     J = make_J(rvecs)
     μ = make_mobility_tensor(rvecs, lambda,h)
     P = I - transpose(J) * ( J * μ * transpose(J) )^(-1) * J * μ
+
+    return P, μ
+
+end
+
+function make_proj_operator_mobility_tensor_sparse(rvecs,lambda,h)
+    #projects velocities to not extend the chain#
+    # https://arxiv.org/pdf/0903.5178.pdf #
+    # μ is sparse, P is not sparse in general
+
+    n = size(rvecs,1)
+
+    J = sparse(make_J(rvecs))
+    μ = sparse(make_mobility_tensor_sparse(rvecs, lambda,h))
+    P = I - transpose(J) * Matrix( J * μ * transpose(J) )^(-1) * J * μ
 
     return P, μ
 

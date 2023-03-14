@@ -246,7 +246,7 @@ function make_cross_product(a,b)
     # returns an n vector
     
     n = size(a,1)
-    c = zeros(size(a))
+    c = Array{typeof(a[1])}(undef,size(a)) #zeros(size(a))
 
     for i = 1:n
         avec = a[i,:]

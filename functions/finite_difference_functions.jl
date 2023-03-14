@@ -112,7 +112,7 @@ function make_D1(rvecs)
         D1[i,i-1:i+1] = mid_weights
     end
 
-    return D1
+    return sparse(D1) # sparse gives 5x improvement in speed
 end
 
 
@@ -134,7 +134,7 @@ function make_D2(rvecs)
         D2[i,i-1:i+1] = mid_weights
     end
 
-    return D2
+    return sparse(D2) # sparse gives 2.5x improvement in speed
 end
 
 
@@ -158,7 +158,7 @@ function make_D2_BC(rvecs)
         D2[i,i-1:i+1] = mid_weights
     end
 
-    return D2
+    return sparse(D2)
 end
 
 
@@ -189,7 +189,7 @@ function make_D3(rvecs)
         D3[i,i-2:i+2] = mid_weights # + O(h^2)
     end
 
-    return D3
+    return sparse(D3)
 
 end
 
@@ -232,6 +232,6 @@ function make_D4(rvecs)
         D4[i,i-2:i+2] = mid_weights # + O(h)
     end
 
-    return D4
+    return sparse(D4)
 
 end
