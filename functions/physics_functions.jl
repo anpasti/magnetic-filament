@@ -76,6 +76,101 @@ function make_J(rvecs)
     return -2*J
 end
 
+function initialize_J_memory(n)
+    # allocate memory for 
+    # J - the Jacobian matrix of the constarints #
+    # https://arxiv.org/pdf/0903.5178.pdf
+    # for function make_J!
+
+    J = zeros(typeof(rvecs[1]),(n-1,3n))
+
+    for i = 1:n-1
+        drvec = [1.,1.,1.]
+        J[i,  (i-1)*3 + 1 : (i-1)*3 + 3] = drvec
+        J[i, (i-1)*3 + 1 + 3 : (i-1)*3 + 3 + 3] = -drvec
+    end 
+
+    return sparse(J)
+end
+
+function make_J!(sparseJ,rvecs)
+    # sparseJ should be a sparse matrix initialize by initialize_J_memory(n)
+    # J - the Jacobian matrix of the constarints #
+    # https://arxiv.org/pdf/0903.5178.pdf #
+
+    n = size(rvecs,1)
+
+    for i = 1:n-1
+        ri = @view rvecs[i,:]
+        riplus1 = @view rvecs[i+1,:]
+        Jfirst = @view sparseJ[i,  (i-1)*3 + 1 : (i-1)*3 + 3]
+        Jsecond = @view sparseJ[i, (i-1)*3 + 1 + 3 : (i-1)*3 + 3 + 3]
+
+        drvec = riplus1 - ri
+        @. Jfirst = drvec
+        @. Jsecond = -drvec
+    end 
+
+    return nothing
+end
+
+function initialize_μ_memory(n)
+    # allocate memory for mobility tensor 3n x 3n matrix 
+    # for function make_mobility_tensor!()
+
+    mob_mat = zeros(3n,3n)
+    for i = 1:n
+        mob_mat[(i-1)*3+1 : (i-1)*3+3, (i-1)*3+1 : (i-1)*3+3] = ones(3,3)
+    end
+    return sparse(mob_mat)
+end
+
+function make_mobility_tensor!(sparseμ, tmp3x1Float, tmp3x3Float , rvecs, lambda, h)
+    # returns 3N x 3N matrix such that varr = sparseμ * farr 
+
+    ζratio = 1 - lambda # zeta_perp / zeta_par
+
+    n = size(rvecs,1)
+    tvec = tmp3x1Float
+    friction_mat_inv = tmp3x3Float
+    for i = 1:n
+        if i==1
+            rplus = @view rvecs[2,:]
+            rminus = @view rvecs[1,:]
+            @. tvec = (rplus - rminus)/h
+        elseif i<n
+            rplus = @view rvecs[i+1,:]
+            rminus = @view rvecs[i-1,:]
+            @. tvec = (rplus - rminus)/(2h)
+        elseif i==n
+            rplus = @view rvecs[end,:]
+            rminus = @view rvecs[end-1,:]
+            @. tvec = (rplus - rminus)/h
+        end
+
+        #friction_mat_inv[:] = (I + (ζratio - 1) * tvec*tvec') /  h
+        # by hand
+        for j=1:3
+            for k=1:3
+                friction_mat_inv[k,j] = tvec[k]*tvec[j]*(ζratio - 1)
+            end
+        end
+        for k=1:3
+            friction_mat_inv[k,k] += 1.
+        end
+        for j=1:3
+            for k=1:3
+                friction_mat_inv[k,j] /= h
+            end
+        end
+        
+        mob_mat_i = @view sparseμ[(i-1)*3+1 : (i-1)*3+3, (i-1)*3+1 : (i-1)*3+3]
+        @. mob_mat_i = friction_mat_inv
+    end
+
+    return nothing
+end
+
 
 function make_proj_to_inextensile(vvecs, rvecs)
     #projects velocities to not extend the chain#
@@ -326,6 +421,48 @@ function make_frelax_arr(h,rvecs, D1)
 end
 
 
+function make_frelax_arr!(frelax_arr, h, rvecs, D1)
+    # force due to magnetic relaxation in a fast precessing field
+    # fiels is precessing around z axis direcion
+    # such that v_arr = P*(Cmrel*frelax_arr)
+
+    n = size(rvecs,1)
+
+    # first element
+    rplus = @view rvecs[2,:]
+    rminus = @view rvecs[1,:]
+    tvec = (rplus - rminus)/h
+    Force_start = -cross( (0.,0.,1.) , tvec)
+    frelax_start = @view frelax_arr[1:3]
+    @. frelax_start = Force_start/h
+
+    # last element
+    rplus = @view rvecs[end,:]
+    rminus = @view rvecs[end-1,:]
+    tvec = (rplus - rminus)/h
+    Force_end = -cross( (0.,0.,1.) , tvec)
+    frelax_end = @view frelax_arr[end-2:end]
+    @. frelax_end = -Force_end/h
+
+    # middle elements
+    for i = 2:n-1
+        rplus = @view rvecs[i+1,:]
+        rminus = @view rvecs[i-1,:]
+        tvec = (rplus - rminus)/(2h)
+
+        Force[i,:] = -cross( (0.,0.,1.) , tvec)
+
+        frelax
+    end
+
+    force_density = D1 * Force
+
+    fvecs = force_density
+
+    return reshape(fvecs',3*n,1)
+end
+
+
 # function make_frelax_arr_old(h,rvecs, D1)
 #     # force due to magnetic relaxation in a fast precessing field
 #     # fiels is precessing around z axis direcion
@@ -486,6 +623,7 @@ function make_proj_operator_mobility_tensor_sparse(rvecs,lambda,h)
     return P, μ
 
 end
+
 
 function make_symbolic_mobility_tensor(rvecs, lambda, h)
     # returns 3N x 3N matrix such that varr = mob_mat * farr 

@@ -17,6 +17,25 @@ function make_tvecs(rvecs)
     return tvecs
 end
 
+function make_tvecs_diff(rvecs, h)
+    # unit tangent vector for every point
+    n = size(rvecs,1)
+    tvecs = zeros(typeof(rvecs[1]),size(rvecs))
+
+    tvecs[1,:] = (rvecs[2,:] - rvecs[1,:])/h
+    #tvecs[1,:] = (rvecs[2,:] - rvecs[1,:])/norm(rvecs[2,:] - rvecs[1,:])
+    tvecs[end,:] = (rvecs[end,:] - rvecs[end-1,:])/h
+    #tvecs[end,:] = (rvecs[end,:] - rvecs[end-1,:])/norm(rvecs[end,:] - rvecs[end-1,:])
+    for i = 2:n-1
+        # dr_forw = rvecs[i,:] - rvecs[i-1,:]
+        # dr_back = rvecs[i+1,:] - rvecs[i,:]
+        tvecs[i,:] = (rvecs[i+1,:] - rvecs[i-1,:])/(2h)
+        #tvecs[i,:] = (rvecs[i+1,:] - rvecs[i-1,:]) / norm(rvecs[i+1,:] - rvecs[i-1,:])
+    end
+
+    return tvecs
+end
+
 
 
 function make_nvecs(rvecs, nvecs_prev)
