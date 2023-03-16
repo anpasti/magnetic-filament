@@ -107,8 +107,8 @@ function make_J!(sparseJ,rvecs)
         Jsecond = @view sparseJ[i, (i-1)*3 + 1 + 3 : (i-1)*3 + 3 + 3]
 
         drvec = riplus1 - ri
-        @. Jfirst = drvec
-        @. Jsecond = -drvec
+        @. Jfirst = -2*drvec
+        @. Jsecond = 2*drvec
     end 
 
     return nothing
@@ -417,49 +417,7 @@ function make_frelax_arr(h,rvecs, D1)
     fvecs[1,:] = Force[1,:] / h
     fvecs[end,:] = -Force[end,:] / h
 
-    return reshape(fvecs',3*n,1)
-end
-
-
-function make_frelax_arr!(frelax_arr, h, rvecs, D1)
-    # force due to magnetic relaxation in a fast precessing field
-    # fiels is precessing around z axis direcion
-    # such that v_arr = P*(Cmrel*frelax_arr)
-
-    n = size(rvecs,1)
-
-    # first element
-    rplus = @view rvecs[2,:]
-    rminus = @view rvecs[1,:]
-    tvec = (rplus - rminus)/h
-    Force_start = -cross( (0.,0.,1.) , tvec)
-    frelax_start = @view frelax_arr[1:3]
-    @. frelax_start = Force_start/h
-
-    # last element
-    rplus = @view rvecs[end,:]
-    rminus = @view rvecs[end-1,:]
-    tvec = (rplus - rminus)/h
-    Force_end = -cross( (0.,0.,1.) , tvec)
-    frelax_end = @view frelax_arr[end-2:end]
-    @. frelax_end = -Force_end/h
-
-    # middle elements
-    for i = 2:n-1
-        rplus = @view rvecs[i+1,:]
-        rminus = @view rvecs[i-1,:]
-        tvec = (rplus - rminus)/(2h)
-
-        Force[i,:] = -cross( (0.,0.,1.) , tvec)
-
-        frelax
-    end
-
-    force_density = D1 * Force
-
-    fvecs = force_density
-
-    return reshape(fvecs',3*n,1)
+    return reshape(fvecs',3*n,1)*h
 end
 
 
@@ -507,7 +465,7 @@ function make_ftwist_arr(h, om_twist, rvecs, D1, D2)
     fvecs[1,:] = [0.,0.,0.]
     fvecs[end,:] = [0.,0.,0.]
 
-    return reshape(fvecs',3*n,1)
+    return reshape(fvecs',3*n,1)*h
 end
 
 

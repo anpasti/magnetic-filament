@@ -17,19 +17,19 @@ include("../functions/filament_geometry_functions.jl")
 
 
 # precession frequency multiplied by relaxation time
-const ωτ = 0.5
+const ωτ = 0.1
 
 # infinitely fast precessing field
 const θmagic = 0.5*acos(-(1+2*ωτ^2)/(3+2*ωτ^2)) #magic angle
-const θ = θmagic+0.08 #+0.2 # precession angle
+const θ = θmagic+0.025 #+0.2 # precession angle
 
 # torque density due to finite relaxation
-const Cmrel0 = 20.
-const Cmrel = Cmrel0 * ωτ/(1+ωτ^2) * sin(θ)
+const Cmrel0 = 400.
+const Cmrel = 150. #Cmrel0 * ωτ/(1+ωτ^2) * sin(θ)
 
 # Magnetic force
 const Cm0 = 400.
-const Cm = Cm0 * 1/(1+ωτ^2) * ( 1+2*ωτ^2 + (3+2*ωτ^2) * cos(2*θ) )
+const Cm = -80. #Cm0 * 1/(1+ωτ^2) * ( 1+2*ωτ^2 + (3+2*ωτ^2) * cos(2*θ) )
 
 # twist elasticity over bending elasticity constant
 const C = 1.
@@ -38,7 +38,7 @@ const C = 1.
 const lambda = -(2. - 1.)#-(make_ζratio_wall(d,ϵ) - 1)  # -(zeta_perp / zeta_par - 1) : anisotropy of drag
 
 # number of discretized elements
-const n = 41#50#80 # number of points - each corresponds to an length element of a rod.
+const n = 31#50#80 # number of points - each corresponds to an length element of a rod.
 const h = 1/n # distance between 2 pts # takes into account the half a point extention on each side
 
 # # initialize the shape
@@ -48,21 +48,23 @@ const h = 1/n # distance between 2 pts # takes into account the half a point ext
 # rvecs[:,3] = range(-0.5,0.5,length=n)
 
 # # initialize the shape
-const rvecs = zeros(n,3)
-const rvecs[:,1] = 0.01*cosh.(range(-0.5,0.5,length=n)).^4 + 0.001*range(-0.5,0.5,length=n)
-#rvecs[:,2] = range(-0.5,0.5,length=n)
-const rvecs[:,3] = range(-0.5,0.5,length=n)
+# const rvecs = zeros(n,3)
+# const rvecs[:,1] = 0.01*sin.(2*pi*range(-0.5,0.5,length=n)) #0.001*cosh.(range(-0.5,0.5,length=n)).^4 + 0.001*range(-0.5,0.5,length=n)
+# #rvecs[:,2] = range(-0.5,0.5,length=n)
+# const rvecs[:,3] = range(-0.5,0.5,length=n)
 
 # initialize the shape
-# global rvecs = zeros(n,3)
-# phi = range(0,2*pi*1.9,length=n)
-# global rvecs[:,1] = range(0.9,1,length=n) .* cos.(phi)#range(-0.5,0.5,length=n)
-# rvecs[:,2] = range(1,0.9,length=n) .* sin.(phi)#exp.( -(rvecs[:,1]).^2 / 0.2^2 )
-# rvecs[:,3] = range(-0.5,0.5,length=n) #0.001 * sin.( pi*range(-0.5,0.5,length=n) ) #d*ones(size(rvecs[:,3]))
+global rvecs = zeros(n,3)
+phi = range(0,pi*1.9,length=n)
+global rvecs[:,1] = range(0.9,1,length=n) .* cos.(phi)#range(-0.5,0.5,length=n)
+rvecs[:,2] = range(1,0.9,length=n) .* sin.(phi)#exp.( -(rvecs[:,1]).^2 / 0.2^2 )
+rvecs[:,3] = range(-0.5,0.5,length=n) #0.001 * sin.( pi*range(-0.5,0.5,length=n) ) #d*ones(size(rvecs[:,3]))
 
 
 renormalize_length!(rvecs)
 const rvecs = rvecs .- make_center_of_mass(rvecs)'
+
+plot(rvecs[:,1],rvecs[:,2],rvecs[:,3],aspect_ratio=:equal)
 
 
 # differentiation matrices
@@ -225,11 +227,12 @@ const u_arr = reshape(rvecs',3*n,1)
 # @profile ( for _=1:10000; velocity!(du_arr,u_arr,params,t); end )
 # @time ( for _=1:10000; velocity!(du_arr,u_arr,params,t); end )
 
-const tspan=[0., 0.01] # until 0.01 for testing
+tend = 0.01
+const tspan=[0., tend] # until 0.01 for testing
 prob = ODEProblem(velocity!,u_arr,tspan,params)
 prob_fast = ODEProblem(velocity_fast!,u_arr,tspan,params_fast)
 #@time sol = solve(prob,alg_hints=[:stiff],saveat=0.01/10,reltol=1e-8, abstol=1e-8) # 82.578174 seconds # 79.163289 seconds if everything is declared as const # 122.920989 s, 266.82 M allocations: 218.478 GiB  on work station 
-@time sol_fast = solve(prob_fast,alg_hints=[:stiff],saveat=0.01/10,reltol=1e-8, abstol=1e-8)
+@time sol_fast = solve(prob_fast,alg_hints=[:stiff],saveat=tend/30,reltol=1e-8, abstol=1e-8)
 ;
 # @time sol_fast = solve(prob_fast,QNDF(autodiff=false),saveat=0.01/10,reltol=1e-8, abstol=1e-8) # 82.578174 seconds # 79.163289 seconds if everything is declared as const # 122.920989 s on work station
 # ;
@@ -255,5 +258,25 @@ prob_fast = ODEProblem(velocity_fast!,u_arr,tspan,params_fast)
 # https://docs.julialang.org/en/v1/manual/performance-tips/#Measure-performance-with-[@time](@ref)-and-pay-attention-to-memory-allocation
 
 
-# rvecs_end=reshape(sol_fast.u[end],3,n)'
-# plot(rvecs_end[:,1],rvecs_end[:,2],rvecs_end[:,3])
+rvecs_end=reshape(sol_fast.u[end],3,n)'
+#plot(rvecs_end[:,1],rvecs_end[:,2],rvecs_end[:,3],aspect_ratio=:equal)
+cms = zeros(size(sol_fast.u,1),3)
+for (i, u) = enumerate(sol_fast.u)
+    local rvecs = reshape(u[1:3*n], 3, n)'
+    local t = sol_fast.t[i]
+    #local hvec = -normalize([cos(omega*t),sin(omega*t),1/sqrt(2)])
+    #println(t/T)
+    display(Plots.plot!(rvecs[:,1],rvecs[:,2],rvecs[:,3],aspect_ratio=:equal,label="", color = :red))
+    cms[i,:] = make_center_of_mass(rvecs)
+    
+    #display(Plots.plot!([0,hvec[1]/4],[0,hvec[2]/4],arrow=true,color=:black,linewidth=2,label=""))
+    # Plots.plot!(rvecs[:,1],rvecs[:,2],rvecs[:,3],aspect_ratio=:equal,label="", color = :red)
+    # display(Plots.plot!([0,hvec[1]/4],[0,hvec[2]/4], [0,hvec[3]/4],arrow=true,color=:black,linewidth=2,label=""))
+
+    # tvecs = make_tvecs(rvecs)
+    # if dot(tvecs[end,:],hvec) >= 0 # nez kāpēc vajag šādu zīmi
+    #     println("backnforth motion")
+    #     global backnforth = true
+    #     global converged = false
+    # end
+end
