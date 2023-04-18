@@ -82,7 +82,7 @@ function initialize_J_memory(n)
     # https://arxiv.org/pdf/0903.5178.pdf
     # for function make_J!
 
-    J = zeros(typeof(rvecs[1]),(n-1,3n))
+    J = zeros((n-1,3n))
 
     for i = 1:n-1
         drvec = [1.,1.,1.]

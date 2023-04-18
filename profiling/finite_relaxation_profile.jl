@@ -9,7 +9,9 @@ using HDF5
 using DifferentialEquations
 using Profile
 using SparseArrays
+using Random
 
+rng = MersenneTwister(1234) # intialize random number generator
 
 include("../functions/physics_functions.jl")
 include("../functions/finite_difference_functions.jl")
@@ -25,17 +27,17 @@ const θ = θmagic+0.025 #+0.2 # precession angle
 
 # torque density due to finite relaxation
 const Cmrel0 = 400.
-const Cmrel = 150. #Cmrel0 * ωτ/(1+ωτ^2) * sin(θ)
+const Cmrel = 130. #Cmrel0 * ωτ/(1+ωτ^2) * sin(θ)
 
 # Magnetic force
 const Cm0 = 400.
-const Cm = -80. #Cm0 * 1/(1+ωτ^2) * ( 1+2*ωτ^2 + (3+2*ωτ^2) * cos(2*θ) )
+const Cm = -150. #Cm0 * 1/(1+ωτ^2) * ( 1+2*ωτ^2 + (3+2*ωτ^2) * cos(2*θ) )
 
 # twist elasticity over bending elasticity constant
 const C = 1.
 
 # anisotropy of drag
-const lambda = -(2. - 1.)#-(make_ζratio_wall(d,ϵ) - 1)  # -(zeta_perp / zeta_par - 1) : anisotropy of drag
+const lambda = -(1. - 1.)#-(make_ζratio_wall(d,ϵ) - 1)  # -(zeta_perp / zeta_par - 1) : anisotropy of drag
 
 # number of discretized elements
 const n = 31#50#80 # number of points - each corresponds to an length element of a rod.
@@ -54,12 +56,20 @@ const h = 1/n # distance between 2 pts # takes into account the half a point ext
 # const rvecs[:,3] = range(-0.5,0.5,length=n)
 
 # initialize the shape
-global rvecs = zeros(n,3)
-phi = range(0,pi*1.9,length=n)
-global rvecs[:,1] = range(0.9,1,length=n) .* cos.(phi)#range(-0.5,0.5,length=n)
-rvecs[:,2] = range(1,0.9,length=n) .* sin.(phi)#exp.( -(rvecs[:,1]).^2 / 0.2^2 )
-rvecs[:,3] = range(-0.5,0.5,length=n) #0.001 * sin.( pi*range(-0.5,0.5,length=n) ) #d*ones(size(rvecs[:,3]))
+# global rvecs = zeros(n,3)
+# phi = range(0,pi*1.9,length=n)
+# global rvecs[:,1] = range(0.9,1,length=n) .* cos.(phi)#range(-0.5,0.5,length=n)
+# rvecs[:,2] = range(1,0.9,length=n) .* sin.(phi)#exp.( -(rvecs[:,1]).^2 / 0.2^2 )
+# rvecs[:,3] = range(-0.5,0.5,length=n) #0.001 * sin.( pi*range(-0.5,0.5,length=n) ) #d*ones(size(rvecs[:,3]))
 
+# initialize the shape
+#random
+println(rng)
+const rvecs = zeros(n,3)
+const rvecs[:,1] = range(-0.5,0.5,length=n) #0.001*cosh.(range(-0.5,0.5,length=n)).^4 + 0.001*range(-0.5,0.5,length=n)
+#rvecs[:,2] = range(-0.5,0.5,length=n)
+#const rvecs[:,3] = range(-0.5,0.5,length=n)
+rvecs += 0.001*randn(rng,(n,3))
 
 renormalize_length!(rvecs)
 const rvecs = rvecs .- make_center_of_mass(rvecs)'
@@ -171,7 +181,7 @@ function velocity_fast!(du_arr,u_arr,params,t)
     om_twist = -Cmrel/C * (  rvecs[:,3] + c1*l .+ c2  )
     ftwist_arr = make_ftwist_arr(h, om_twist, rvecs, D1, D2)
     
-    total_force_arr = total_Mmat*r_arr + C*ftwist_arr + Cmrel*frelax_arr
+    total_force_arr = total_Mmat*r_arr  + Cmrel*frelax_arr + C*ftwist_arr
     
     Λ =  Symmetric(J*μ*transpose(J))  \ (-J*μ*total_force_arr)  # lagrange multiplier
     ftension_arr = transpose(J)*Λ # tension force for inextensible filament
@@ -218,6 +228,58 @@ function lambdasol!(tmpNm1x1Float,tmpNm1xNm1Float)
     # du_arr = μ*(total_force_arr + ftension_arr)
 end
 
+function make_tension(u_arr,params,t)
+    lambda = params[1]
+    h = params[2]
+    n = params[3]
+    Cm = params[4]
+    Cmrel = params[5]
+    C = params[6]
+    #Mmat = params[7]
+    #Mmat_Fparamag = params[8]
+    D1 = params[9]
+    D2 = params[10]
+    J = params[11]
+    μ = params[12]
+    tmp3x1Float = params[13]
+    tmp3x3Float = params[14]
+    total_Mmat = params[15]
+
+    
+    r_arr = u_arr #@view u_arr[:]
+    rvecs = reshape(r_arr, 3, n)'
+    
+
+    # # projection operator on inextensible motion
+    # P, μ = make_proj_operator_mobility_tensor(rvecs, lambda, h)
+    # P = μ*P # dense matrix
+    make_J!(J,rvecs)
+    make_mobility_tensor!(μ, tmp3x1Float, tmp3x3Float , rvecs, lambda, h)
+
+    # finite magentic relaxation force
+
+    frelax_arr = make_frelax_arr(h,rvecs, D1)
+
+    # twist
+    c1 = rvecs[1,3]-rvecs[n,3]
+    c2 = -(rvecs[1,3]+rvecs[n,3])/2
+    l = range(-0.5,0.5,length=n)
+    om_twist = -Cmrel/C * (  rvecs[:,3] + c1*l .+ c2  )
+    ftwist_arr = make_ftwist_arr(h, om_twist, rvecs, D1, D2)
+    
+    total_force_arr = total_Mmat*r_arr  + Cmrel*frelax_arr + C*ftwist_arr
+    
+    Λ =  Symmetric(J*μ*transpose(J))  \ (-J*μ*total_force_arr)  # lagrange multiplier
+    ftension_arr = transpose(J)*Λ # tension force for inextensible filament
+
+    return ftension_arr
+    #du_arr[:] = μ*(total_force_arr + ftension_arr)
+    # vvecs = reshape(du_arr[1:3*n], 3, n)'
+    # du_arr[3*n+1:end] = 0*C / zeta_rot * D2om_twist + 0*make_dot_product(make_cross_product(D1*rvecs,D2_BC*rvecs), D1*vvecs)
+end
+
+
+
 const u_arr = reshape(rvecs',3*n,1)
 # du_arr = zeros(size(u_arr))
 # t=0.
@@ -227,7 +289,7 @@ const u_arr = reshape(rvecs',3*n,1)
 # @profile ( for _=1:10000; velocity!(du_arr,u_arr,params,t); end )
 # @time ( for _=1:10000; velocity!(du_arr,u_arr,params,t); end )
 
-tend = 0.01
+tend = 0.03
 const tspan=[0., tend] # until 0.01 for testing
 prob = ODEProblem(velocity!,u_arr,tspan,params)
 prob_fast = ODEProblem(velocity_fast!,u_arr,tspan,params_fast)
@@ -259,14 +321,33 @@ prob_fast = ODEProblem(velocity_fast!,u_arr,tspan,params_fast)
 
 
 rvecs_end=reshape(sol_fast.u[end],3,n)'
+rvecs_end .-= make_center_of_mass(rvecs_end)'
+rend_arr = reshape(rvecs_end',3*n,1)
+ftension_arr = make_tension(rend_arr,params_fast,0)
+ftension = reshape(ftension_arr,3,n)'
+# tvecs = make_tvecs(rvecs_end)
+# ftt = make_dot_product(tvecs,ftension) .* tvecs
+# ftn = ftension - ftt
+# lam = sum(ftn.^2,dims=2).^0.5
+ks = make_curvatures(rvecs_end,h)
+lam = make_dot_product(ftension,D2_BC*rvecs_end) ./ ks.^2 ./h
+
+du_arr = zeros(size(u_arr))
+velocity_fast!(du_arr,rend_arr,params_fast,0.)
+vvecs = reshape(du_arr,3,n)'
+Rs = sum(rvecs_end.^2,dims=2).^0.5
+tmp = make_cross_product(rvecs_end,vvecs)
+omega_rot_times_Rsq = sum(tmp.^2,dims=2).^0.5 
+
 #plot(rvecs_end[:,1],rvecs_end[:,2],rvecs_end[:,3],aspect_ratio=:equal)
+#plot(rvecs_end[:,1],rvecs_end[:,2],aspect_ratio=:equal)
 cms = zeros(size(sol_fast.u,1),3)
 for (i, u) = enumerate(sol_fast.u)
     local rvecs = reshape(u[1:3*n], 3, n)'
     local t = sol_fast.t[i]
     #local hvec = -normalize([cos(omega*t),sin(omega*t),1/sqrt(2)])
     #println(t/T)
-    display(Plots.plot!(rvecs[:,1],rvecs[:,2],rvecs[:,3],aspect_ratio=:equal,label="", color = :red))
+    # display(Plots.plot!(rvecs[:,1],rvecs[:,2],rvecs[:,3],aspect_ratio=:equal,label="", color = :red))
     cms[i,:] = make_center_of_mass(rvecs)
     
     #display(Plots.plot!([0,hvec[1]/4],[0,hvec[2]/4],arrow=true,color=:black,linewidth=2,label=""))
