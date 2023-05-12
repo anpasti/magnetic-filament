@@ -240,6 +240,34 @@ function align_filament_horizontally(rvecs,hvec)
 end
 
 
+function align_filament_horizontally_adjust_velocity(rvecs,vvecs,hvec)
+    tvecs = make_tvecs(rvecs)
+
+    n = size(rvecs,1)
+    if n%2 == 1 # if odd
+        tvec_middle = tvecs[div(n+1,2),:]
+    elseif n%2 == 0 # if even
+        tvec_middle = normalize(tvecs[div(n,2),:] + tvecs[div(n,2)+1,:])
+    end
+    
+    angle = -atan(tvec_middle[2],tvec_middle[1])
+
+    rvecs_rotated = zeros(size(rvecs))
+    for i = 1:n
+        rvecs_rotated[i,:] = rotate(rvecs[i,:],angle,[0,0,1])
+    end
+
+    hvec_rotated = rotate(hvec,angle,[0,0,1])
+
+    vvecs_rotated = zeros(size(vvecs))
+    for i = 1:n
+        vvecs_rotated[i,:] = rotate(vvecs[i,:],angle,[0,0,1])
+    end
+
+    return rvecs_rotated, hvec_rotated, vvecs_rotated
+end
+
+
 
 
 function find_distance_to_filament(vec,rvecs)
