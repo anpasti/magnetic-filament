@@ -23,7 +23,7 @@ omega = 10*Cm
 lambda = -(2. - 1.) #-(make_ζratio_wall(d,ϵ) - 1)  # -(zeta_perp / zeta_par - 1) : anisotropy of drag
 
 # number of discretized elements
-n = 80#50#80 # number of points - each corresponds to a length element of a rod.
+n = 30#50#80 # number of points - each corresponds to a length element of a rod.
 h = 1/n # distance between 2 pts # takes into account the half a point extention on each side
 
 
