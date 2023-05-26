@@ -19,7 +19,7 @@ include("../functions/filament_geometry_functions.jl")
 # const rvec = [1.,1.,0.3] # height iz the z component
 # const rvec0 = [-1.,-1.,0.3]
 
-make_stokeslet_velocity_wall(Fvec,rvec,rvec0)
+# make_stokeslet_velocity_wall(Fvec,rvec,rvec0)
 
 # make_doublet_velocity_field_wall(Fvec,rvec,rvec0)
 
@@ -38,7 +38,7 @@ function make_stokeslet_velocity_wall_fast!(vvec, Fvec,rvec,rvec0,tmp3x1Float1,t
     @. Rimvec = rvec - rvec0 # image system radius vector
     h = rvec0[3] # height above wall
     Rimvec[3] += 2*h
-    Rim = sqrt( R^2 + 4*h^2 )
+    Rim = norm(Rimvec)#sqrt( R^2 + 4*h^2 )
 
     @. vvec = [0.,0.,0.]
     for i = 1:3
@@ -90,7 +90,7 @@ function make_doublet_velocity_field_wall_fast!(vvec,Fvec,rvec,rvec0,tmp3x1Float
     @. Rimvec = rvec - rvec0 # image system radius vector
     h = rvec0[3] # height above wall
     Rimvec[3] += 2*h
-    Rim = sqrt( R^2 + 4*h^2 )
+    Rim = norm(Rimvec) # sqrt( R^2 + 4*h^2 )
 
     @. vvec = [0.,0.,0.]
     for i = 1:3
@@ -155,7 +155,7 @@ end
 
 function stokeslet_test(N)
     Fvec = [3.,2.,0.] # z component must be 0
-    rvec = [1.,2.,1] # height iz the z component
+    rvec = [1.,2.,3.] # height iz the z component
     rvec0 = [-1.,-1.,1]
     vvec = [0.,0.,0.]
     tmp1 = [0.,0.,0.]
@@ -170,7 +170,7 @@ end
 
 function stokeslet_fast_test(N)
     Fvec = [3.,2.,0.] # z component must be 0
-    rvec = [1.,2.,1] # height iz the z component
+    rvec = [1.,2.,3.] # height iz the z component
     rvec0 = [-1.,-1.,1]
     vvec = [0.,0.,0.]
     tmp1 = [0.,0.,0.]
@@ -185,7 +185,7 @@ end
 
 function stokeslet_very_fast_test(N)
     Fvec = [3.,2.,0.] # z component must be 0
-    rvec = [1.,2.,1] # height iz the z component
+    rvec = [1.,2.,3.] # height iz the z component
     rvec0 = [-1.,-1.,1]
     vvec = [0.,0.,0.]
     tmp1 = [0.,0.,0.]
@@ -204,7 +204,7 @@ end
 
 function doublet_test(N)
     Fvec = [1.,2.,0.] # z component must be 0
-    rvec = [1.,3.,0.3] # height is the z component
+    rvec = [1.,2.,3.] # height is the z component
     rvec0 = [-1.,-1.,0.3]
     for _ = 1:N
         make_doublet_velocity_field_wall(Fvec,rvec,rvec0)
@@ -214,7 +214,7 @@ end
 
 function doublet_fast_test(N)
     Fvec = [1.,2.,0.] # z component must be 0
-    rvec = [1.,3.,0.3] # height iz the z component
+    rvec = [1.,2.,3.] # height iz the z component
     rvec0 = [-1.,-1.,0.3]
     vvec = [0.,0.,0.]
     tmp1 = [0.,0.,0.]

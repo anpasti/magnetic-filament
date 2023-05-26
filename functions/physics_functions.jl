@@ -680,7 +680,7 @@ function make_stokeslet_velocity_wall_fast!(vvec, Fvec,rvec,rvec0,tmp3x1Float1,t
     @. Rimvec = rvec - rvec0 # image system radius vector
     h = rvec0[3] # height above wall
     Rimvec[3] += 2*h
-    Rim = sqrt( R^2 + 4*h^2 )
+    Rim = norm(Rimvec)#sqrt( R^2 + 4*h^2 )
 
     @. vvec = [0.,0.,0.]
     for i = 1:3
@@ -798,7 +798,7 @@ function make_doublet_velocity_field_wall_fast!(vvec,Fvec,rvec,rvec0,tmp3x1Float
     @. Rimvec = rvec - rvec0 # image system radius vector
     h = rvec0[3] # height above wall
     Rimvec[3] += 2*h
-    Rim = sqrt( R^2 + 4*h^2 )
+    Rim = norm(Rimvec) # sqrt( R^2 + 4*h^2 )
 
     @. vvec = [0.,0.,0.]
     for i = 1:3
@@ -907,6 +907,35 @@ function make_velocity_field_wall(rvec_eval, rvecs, fvecs, ϵ, d, h)
     end
 
     return u_disturbance
+end
+
+
+function make_velocity_field_wall_fast!(u_disturbance,rvec_eval, rvecs,
+                                 fvecs, ϵ, d, h, tmp3x1Float1, tmp3x1Float2,tmp3x1Float3,tmp3x1Float4)
+    # Like in Laurel Ohm thesis
+    # flow at rvec_eval
+    # ϵ = radius / length of filament
+    # d = height above wall / length of filament
+    # u_bkg - background flow
+    # rvecs - filament element radius vectors
+    # fvecs - dF array, with a dimension of force
+    # h - distance between elements in units of length of filament
+
+    α = 1/(log(1/(4*d^2)) + 1 - E1(d) - 2*E2(d) + 2α1(d,ϵ))
+
+    n = size(rvecs,1)
+
+    uS = tmp3x1Float3
+    uD = tmp3x1Float4
+    @. u_disturbance = [0., 0., 0.]
+    for i = 1:n
+        make_stokeslet_velocity_wall_fast!(uS,fvecs[i,:],rvec_eval,rvecs[i,:],tmp3x1Float1,tmp3x1Float2)
+        make_doublet_velocity_field_wall_fast!(uD,fvecs[i,:],rvec_eval,rvecs[i,:],tmp3x1Float1,tmp3x1Float2)
+
+        @. u_disturbance += α*(uS + ϵ^2 / 2 * uD )
+    end
+
+    return nothing
 end
 
 
