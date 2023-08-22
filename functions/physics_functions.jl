@@ -76,6 +76,101 @@ function make_J(rvecs)
     return -2*J
 end
 
+function initialize_J_memory(n)
+    # allocate memory for 
+    # J - the Jacobian matrix of the constarints #
+    # https://arxiv.org/pdf/0903.5178.pdf
+    # for function make_J!
+
+    J = zeros((n-1,3n))
+
+    for i = 1:n-1
+        drvec = [1.,1.,1.]
+        J[i,  (i-1)*3 + 1 : (i-1)*3 + 3] = drvec
+        J[i, (i-1)*3 + 1 + 3 : (i-1)*3 + 3 + 3] = -drvec
+    end 
+
+    return sparse(J)
+end
+
+function make_J!(sparseJ,rvecs)
+    # sparseJ should be a sparse matrix initialize by initialize_J_memory(n)
+    # J - the Jacobian matrix of the constarints #
+    # https://arxiv.org/pdf/0903.5178.pdf #
+
+    n = size(rvecs,1)
+
+    for i = 1:n-1
+        ri = @view rvecs[i,:]
+        riplus1 = @view rvecs[i+1,:]
+        Jfirst = @view sparseJ[i,  (i-1)*3 + 1 : (i-1)*3 + 3]
+        Jsecond = @view sparseJ[i, (i-1)*3 + 1 + 3 : (i-1)*3 + 3 + 3]
+
+        drvec = riplus1 - ri
+        @. Jfirst = -2*drvec
+        @. Jsecond = 2*drvec
+    end 
+
+    return nothing
+end
+
+function initialize_μ_memory(n)
+    # allocate memory for mobility tensor 3n x 3n matrix 
+    # for function make_mobility_tensor!()
+
+    mob_mat = zeros(3n,3n)
+    for i = 1:n
+        mob_mat[(i-1)*3+1 : (i-1)*3+3, (i-1)*3+1 : (i-1)*3+3] = ones(3,3)
+    end
+    return sparse(mob_mat)
+end
+
+function make_mobility_tensor!(sparseμ, tmp3x1Float, tmp3x3Float , rvecs, lambda, h)
+    # returns 3N x 3N matrix such that varr = sparseμ * farr 
+
+    ζratio = 1 - lambda # zeta_perp / zeta_par
+
+    n = size(rvecs,1)
+    tvec = tmp3x1Float
+    friction_mat_inv = tmp3x3Float
+    for i = 1:n
+        if i==1
+            rplus = @view rvecs[2,:]
+            rminus = @view rvecs[1,:]
+            @. tvec = (rplus - rminus)/h
+        elseif i<n
+            rplus = @view rvecs[i+1,:]
+            rminus = @view rvecs[i-1,:]
+            @. tvec = (rplus - rminus)/(2h)
+        elseif i==n
+            rplus = @view rvecs[end,:]
+            rminus = @view rvecs[end-1,:]
+            @. tvec = (rplus - rminus)/h
+        end
+
+        #friction_mat_inv[:] = (I + (ζratio - 1) * tvec*tvec') /  h
+        # by hand
+        for j=1:3
+            for k=1:3
+                friction_mat_inv[k,j] = tvec[k]*tvec[j]*(ζratio - 1)
+            end
+        end
+        for k=1:3
+            friction_mat_inv[k,k] += 1.
+        end
+        for j=1:3
+            for k=1:3
+                friction_mat_inv[k,j] /= h
+            end
+        end
+        
+        mob_mat_i = @view sparseμ[(i-1)*3+1 : (i-1)*3+3, (i-1)*3+1 : (i-1)*3+3]
+        @. mob_mat_i = friction_mat_inv
+    end
+
+    return nothing
+end
+
 
 function make_proj_to_inextensile(vvecs, rvecs)
     #projects velocities to not extend the chain#
@@ -322,7 +417,7 @@ function make_frelax_arr(h,rvecs, D1)
     fvecs[1,:] = Force[1,:] / h
     fvecs[end,:] = -Force[end,:] / h
 
-    return reshape(fvecs',3*n,1)
+    return reshape(fvecs',3*n,1)*h
 end
 
 
@@ -370,7 +465,7 @@ function make_ftwist_arr(h, om_twist, rvecs, D1, D2)
     fvecs[1,:] = [0.,0.,0.]
     fvecs[end,:] = [0.,0.,0.]
 
-    return reshape(fvecs',3*n,1)
+    return reshape(fvecs',3*n,1)*h
 end
 
 
@@ -486,6 +581,7 @@ function make_proj_operator_mobility_tensor_sparse(rvecs,lambda,h)
     return P, μ
 
 end
+
 
 function make_symbolic_mobility_tensor(rvecs, lambda, h)
     # returns 3N x 3N matrix such that varr = mob_mat * farr 
@@ -620,6 +716,58 @@ function make_stokeslet_velocity_wall(Fvec,rvec,rvec0)
     # corresponds with Mathematica
 end
 
+
+function make_stokeslet_velocity_wall_fast!(vvec, Fvec,rvec,rvec0,tmp3x1Float1,tmp3x1Float2)
+    # stokeslet velocity near a wall. see Blake and Chwang (1973).
+    # evaluated at r due to force F at r0
+    # F_z must be 0
+    # wall is assumed to be at z=0
+
+    Rvec = tmp3x1Float1
+    @. Rvec = rvec - rvec0
+    R = norm(Rvec)
+    Rimvec = tmp3x1Float2
+    @. Rimvec = rvec - rvec0 # image system radius vector
+    h = rvec0[3] # height above wall
+    Rimvec[3] += 2*h
+    Rim = norm(Rimvec)#sqrt( R^2 + 4*h^2 )
+
+    @. vvec = [0.,0.,0.]
+    for i = 1:3
+        for j = 1:2 # F_z=0
+            vvec[i] += 
+            Fvec[j]*(
+             (Rvec[i]*Rvec[j]/R^3) 
+            -(Rimvec[i]*Rimvec[j]/Rim^3)
+            +2*h/Rim^3*
+                (
+                 -3*Rimvec[i]*Rimvec[j]/Rim^2 * (h-Rimvec[3])
+                )
+            )
+            if i == j
+                vvec[i] += Fvec[j]*(
+                1/R - 1/Rim
+                +2*h/Rim^3*
+                    (
+                     (h-Rimvec[3])
+                    )
+                )
+            end
+            if i==3
+                vvec[i] += Fvec[j]*(
+                    2*h/Rim^3*Rimvec[j]
+                )
+            end
+
+        end
+    end
+
+
+    return  nothing
+    # corresponds with Mathematica
+end
+
+
 function make_doublet(rvec,rvec0)
     # source and sink doublet
     # evaluated at r due to r0
@@ -686,6 +834,79 @@ function make_doublet_velocity_field_wall(Fvec,rvec,rvec0)
     # corresponds with Mathematica
 end
 
+function make_doublet_velocity_field_wall_fast!(vvec,Fvec,rvec,rvec0,tmp3x1Float1,tmp3x1Float2)
+    # source doublet velocity near a wall. see Blake and Chwang (1973).
+    # evaluated at r due to source F at r0
+    # F_z must be 0
+    # wall is assumed to be at z=0
+
+    Rvec = tmp3x1Float1
+    @. Rvec = rvec - rvec0
+    R = norm(Rvec)
+    z=rvec[3]
+    Rimvec = tmp3x1Float2
+    @. Rimvec = rvec - rvec0 # image system radius vector
+    h = rvec0[3] # height above wall
+    Rimvec[3] += 2*h
+    Rim = norm(Rimvec) # sqrt( R^2 + 4*h^2 )
+
+    @. vvec = [0.,0.,0.]
+    for i = 1:3
+        for j = 1:2 # F_z=0
+            vvec[i] += 
+            Fvec[j]*(
+             ( - 3*Rvec[i]*Rvec[j]/R^5) 
+            -( - 3*Rimvec[i]*Rimvec[j]/Rim^5)
+            )
+            if i == j
+                vvec[i] += Fvec[j]*(
+                    1/R^3 - 1/Rim^3
+                )
+            end
+        end
+
+        if i == 3
+            for α=1:2
+                vvec[i] -= 
+                Fvec[α]*6*Rimvec[α]*Rimvec[3]/Rim^5
+            end
+        end
+
+        for α=1:2
+            for β=1:2
+                if i == β
+                    vvec[i] -= 
+                    2*Fvec[α]*
+                    (
+                    15*Rimvec[3]*Rimvec[α]*Rimvec[β]*z/Rim^7
+                    )
+                    if α == β
+                        vvec[i] -= 
+                        2*Fvec[α]*
+                        (
+                        -3*Rimvec[3]*z/Rim^5 
+                        )
+                    end
+                end
+            end
+        end
+
+        if i == 3
+            for α=1:2
+                vvec[i] -= 
+                2*Fvec[α]*
+                (
+                -3*Rimvec[α]*z/Rim^5
+                +15*Rimvec[3]^2*z*Rimvec[α]/Rim^7
+                )
+            end
+        end
+
+    end
+
+    return nothing
+    # corresponds with Mathematica
+end
 
 function make_velocity_field(rvec_eval, rvecs, fvecs, ϵ, h)
     # Like in Laurel Ohm thesis
@@ -736,6 +957,35 @@ function make_velocity_field_wall(rvec_eval, rvecs, fvecs, ϵ, d, h)
     end
 
     return u_disturbance
+end
+
+
+function make_velocity_field_wall_fast!(u_disturbance,rvec_eval, rvecs,
+                                 fvecs, ϵ, d, h, tmp3x1Float1, tmp3x1Float2,tmp3x1Float3,tmp3x1Float4)
+    # Like in Laurel Ohm thesis
+    # flow at rvec_eval
+    # ϵ = radius / length of filament
+    # d = height above wall / length of filament
+    # u_bkg - background flow
+    # rvecs - filament element radius vectors
+    # fvecs - dF array, with a dimension of force
+    # h - distance between elements in units of length of filament
+
+    α = 1/(log(1/(4*d^2)) + 1 - E1(d) - 2*E2(d) + 2α1(d,ϵ))
+
+    n = size(rvecs,1)
+
+    uS = tmp3x1Float3
+    uD = tmp3x1Float4
+    @. u_disturbance = [0., 0., 0.]
+    for i = 1:n
+        make_stokeslet_velocity_wall_fast!(uS,fvecs[i,:],rvec_eval,rvecs[i,:],tmp3x1Float1,tmp3x1Float2)
+        make_doublet_velocity_field_wall_fast!(uD,fvecs[i,:],rvec_eval,rvecs[i,:],tmp3x1Float1,tmp3x1Float2)
+
+        @. u_disturbance += α*(uS + ϵ^2 / 2 * uD )
+    end
+
+    return nothing
 end
 
 

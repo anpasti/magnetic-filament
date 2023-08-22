@@ -17,6 +17,25 @@ function make_tvecs(rvecs)
     return tvecs
 end
 
+function make_tvecs_diff(rvecs, h)
+    # unit tangent vector for every point
+    n = size(rvecs,1)
+    tvecs = zeros(typeof(rvecs[1]),size(rvecs))
+
+    tvecs[1,:] = (rvecs[2,:] - rvecs[1,:])/h
+    #tvecs[1,:] = (rvecs[2,:] - rvecs[1,:])/norm(rvecs[2,:] - rvecs[1,:])
+    tvecs[end,:] = (rvecs[end,:] - rvecs[end-1,:])/h
+    #tvecs[end,:] = (rvecs[end,:] - rvecs[end-1,:])/norm(rvecs[end,:] - rvecs[end-1,:])
+    for i = 2:n-1
+        # dr_forw = rvecs[i,:] - rvecs[i-1,:]
+        # dr_back = rvecs[i+1,:] - rvecs[i,:]
+        tvecs[i,:] = (rvecs[i+1,:] - rvecs[i-1,:])/(2h)
+        #tvecs[i,:] = (rvecs[i+1,:] - rvecs[i-1,:]) / norm(rvecs[i+1,:] - rvecs[i-1,:])
+    end
+
+    return tvecs
+end
+
 
 
 function make_nvecs(rvecs, nvecs_prev)
@@ -218,6 +237,34 @@ function align_filament_horizontally(rvecs,hvec)
     hvec_rotated = rotate(hvec,angle,[0,0,1])
 
     return rvecs_rotated, hvec_rotated
+end
+
+
+function align_filament_horizontally_adjust_velocity(rvecs,vvecs,hvec)
+    tvecs = make_tvecs(rvecs)
+
+    n = size(rvecs,1)
+    if n%2 == 1 # if odd
+        tvec_middle = tvecs[div(n+1,2),:]
+    elseif n%2 == 0 # if even
+        tvec_middle = normalize(tvecs[div(n,2),:] + tvecs[div(n,2)+1,:])
+    end
+    
+    angle = -atan(tvec_middle[2],tvec_middle[1])
+
+    rvecs_rotated = zeros(size(rvecs))
+    for i = 1:n
+        rvecs_rotated[i,:] = rotate(rvecs[i,:],angle,[0,0,1])
+    end
+
+    hvec_rotated = rotate(hvec,angle,[0,0,1])
+
+    vvecs_rotated = zeros(size(vvecs))
+    for i = 1:n
+        vvecs_rotated[i,:] = rotate(vvecs[i,:],angle,[0,0,1])
+    end
+
+    return rvecs_rotated, hvec_rotated, vvecs_rotated
 end
 
 
