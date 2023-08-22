@@ -18,10 +18,8 @@ regλ = 0.1 #Tikhonov regularization parameter https://docs.juliahub.com/Regular
 n = 50
 h = 1/n # distance between 2 pts 
 ρ = h/sqrt(exp(1)) # radius of filament
-d = 0.02 # height
+d = 0.1 # height
 
-println("ρ/L = ", ρ)
-println("h/ρ = ", d/ρ)
 
 wint = 11 # how many points in the middle section
 w = wint * h / 2 # 2w/h should be integer
@@ -29,6 +27,10 @@ r0 = exp(-pi/2)*w
 θmax = log( exp(pi/2) * (1-2*w+2*sqrt(2)*w) / (2*sqrt(2)*w) )
 armlength = 1/2 - w
 
+println("ρ/L = ", ρ)
+println("h/ρ = ", d/ρ)
+println("w = ", w)
+println("h = ",d)
 
 
 # # initialize the shape
@@ -74,7 +76,7 @@ renormalize_length!(rvecs)
 rvecs = rvecs .- make_center_of_mass(rvecs)'
 rvecs[:,3] = d*ones(size(rvecs[:,3]))
 
-display(Plots.plot(rvecs[:,1],rvecs[:,2],aspect_ratio=:equal))
+display(Plots.scatter(rvecs[:,1],rvecs[:,2],aspect_ratio=:equal))
 
 tvecs = make_tvecs(rvecs)
 
@@ -149,8 +151,8 @@ fvecs = reshape(farr[1:3*n], 3, n)'
 
 
 
-display(Plots.plot(fvecs_local[:,:]))
-display(Plots.plot!(fvecs[:,:]))
+# display(Plots.plot(fvecs_local[:,:]))
+# display(Plots.plot!(fvecs[:,:]))
 #display(Plots.plot(vvecs[:,:]))
 
 # # in the normal direction the Fredholm integral equation of the 2nd type results in good results
@@ -164,3 +166,7 @@ display(Plots.plot!(fvecs[:,:]))
 # fvecs_t = make_dot_product(fvecs,tvecs) 
 # display(Plots.plot(fvecs_local_t))
 # display(Plots.plot!(fvecs_t[:,:]))
+
+Flift = sum(fvecs[:,3]*h)
+println("Flift = ",Flift)
+println("*********")
