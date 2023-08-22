@@ -14,7 +14,7 @@ include("../functions/filament_geometry_functions.jl")
 
 # make the initial shape
 
-n = 50
+n = 250
 h = 1/n # distance between 2 pts 
 ρ = h/sqrt(exp(1)) # radius of filament
 d = 0.06 # height
@@ -90,15 +90,20 @@ E20 = 1/2/sqrt( 1+16*d^2 )
 E30 = 1/2/sqrt( 1+16*d^2 )^3
 α10 = log( (d+sqrt(d^2-ρ^2))/ρ )
 
+
 E1s = asinh.((1 .- 2*larray)/(4*d)) + asinh.((1 .+ 2*larray)/(4*d))
-E2s = (1 .- 2*larray) ./ ( 4*sqrt.( 16*d^2 .+ (1 .- 2*larray.^2).^2 ) ) + (1 .+ 2*larray) ./ ( 4*sqrt.( 16*d^2 .+ (1 .+ 2*larray.^2).^2 ) )
-E3s = (1 .- 2*larray).^3 ./ ( 4*sqrt.( 16*d^2 .+ (1 .- 2*larray.^2).^2 ).^3 ) + (1 .+ 2*larray).^3 ./ ( 4*sqrt.( 16*d^2 .+ (1 .+ 2*larray.^2).^2 ).^3 )
+E2s = (1 .- 2*larray) ./ ( 4*sqrt.( 16*d^2 .+ (1 .- 2*larray).^2 ) ) +
+      (1 .+ 2*larray) ./ ( 4*sqrt.( 16*d^2 .+ (1 .+ 2*larray).^2 ) )
+E3s = (1 .- 2*larray).^3 ./ ( 4*sqrt.( 16*d^2 .+ (1 .- 2*larray).^2 ).^3 ) + 
+      (1 .+ 2*larray).^3 ./ ( 4*sqrt.( 16*d^2 .+ (1 .+ 2*larray).^2 ).^3 )
 ρfun = ρ *sqrt.(1 .- 4*larray.^2) #shape of filament crossection radius
 α1s = log.( (d .+ sqrt.(d^2 .- ρfun.^2)) ./ ρ )
+
 
 ζperp0 = 8π / ( log(1/(4*d^2)) +1 -E10 - 2*E20 +2*α10   )
 ζperp_inf = 4π / (log(1/ρ) + 1/2)
 ζperps = 8π ./ ( log.( (1 .- 4*larray.^2)/(4*d^2) ) .+ 1 .- E1s .- 2*E2s .+ 2*α1s   )
+
 
 display(Plots.plot(fvecs[:,2])) # only force in x direction
 display(Plots.plot!(vvecs[:,2] .* ζperps)) # drag coefficient
