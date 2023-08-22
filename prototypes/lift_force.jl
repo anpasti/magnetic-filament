@@ -14,10 +14,14 @@ include("../functions/filament_geometry_functions.jl")
 
 # make the initial shape
 
-n = 17*2
+regλ = 0.1 #Tikhonov regularization parameter https://docs.juliahub.com/RegularizationTools/W7b5l/0.2.0/theory/theory/
+n = 50
 h = 1/n # distance between 2 pts 
 ρ = h/sqrt(exp(1)) # radius of filament
-d = 9.9*ρ # height
+d = 0.02 # height
+
+println("ρ/L = ", ρ)
+println("h/ρ = ", d/ρ)
 
 wint = 11 # how many points in the middle section
 w = wint * h / 2 # 2w/h should be integer
@@ -31,7 +35,7 @@ armlength = 1/2 - w
 rvecs = zeros(n,3)
 # rvecs[:,1] = range(-0.5,0.5,length=n)
 # rvecs[:,2] = range(-0.5,0.5,length=n).^3
-# rvecs[:,3] = d*ones(size(rvecs[:,3]))
+# # rvecs[:,3] = d*ones(size(rvecs[:,3]))
 
 # a convuluted function to make the shape
 θ = θmax
@@ -70,7 +74,7 @@ renormalize_length!(rvecs)
 rvecs = rvecs .- make_center_of_mass(rvecs)'
 rvecs[:,3] = d*ones(size(rvecs[:,3]))
 
-display(Plots.scatter(rvecs[:,1],rvecs[:,2],aspect_ratio=:equal))
+display(Plots.plot(rvecs[:,1],rvecs[:,2],aspect_ratio=:equal))
 
 tvecs = make_tvecs(rvecs)
 
@@ -121,8 +125,42 @@ end
 
 varr = reshape(vvecs',3*n,1)
 
-farr = integralMat \ varr
+# approximate solution
+E10 = 2*asinh(1/(4*d))
+E20 = 1/2/sqrt( 1+16*d^2 )
+E30 = 1/2/sqrt( 1+16*d^2 )^3
+α10 = log( (d+sqrt(d^2-ρ^2))/ρ )
+
+ζperp0 = 8π / ( log(1/(4*d^2)) +1 -E10 - 2*E20 +2*α10   )
+ζpar0 = 4π / ( log(1/(4*d^2)) -1 -E10 + E20 +2*α10   )
+
+fvecs_local = zeros(size(vvecs))
+for i = 1:n
+    fvecs_local[i,:] = ζpar0*dot(vvecs[i,:], tvecs[i,:])*tvecs[i,:] +
+                        ζperp0*( vvecs[i,:] - dot(vvecs[i,:], tvecs[i,:])*tvecs[i,:] )
+end
+
+farr0 = reshape(fvecs_local',3*n,1) # approximate solution
+
+# farr = integralMat \ varr
+farr = (  transpose(integralMat)*integralMat + regλ^2*I ) \ ( transpose(integralMat)*varr + regλ^2*I*farr0)
+
 fvecs = reshape(farr[1:3*n], 3, n)'
 
 
-display(Plots.scatter(fvecs[:,3]))
+
+display(Plots.plot(fvecs_local[:,:]))
+display(Plots.plot!(fvecs[:,:]))
+#display(Plots.plot(vvecs[:,:]))
+
+# # in the normal direction the Fredholm integral equation of the 2nd type results in good results
+# fvecs_local_n = fvecs_local - make_dot_product(fvecs_local,tvecs) .* tvecs
+# fvecs_n = fvecs - make_dot_product(fvecs,tvecs) .* tvecs
+# display(Plots.plot(fvecs_local_n[:,:]))
+# display(Plots.plot!(fvecs_n[:,:]))
+
+# # in the tangent direction the Fredholm integral equation of the 1st type results in oscillations
+# fvecs_local_t = make_dot_product(fvecs_local,tvecs)
+# fvecs_t = make_dot_product(fvecs,tvecs) 
+# display(Plots.plot(fvecs_local_t))
+# display(Plots.plot!(fvecs_t[:,:]))
