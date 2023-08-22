@@ -532,6 +532,56 @@ function make_stokeslet(rvec,rvec0)
     
 end
 
+function make_stokeslet_wall(rvec,rvec0)
+    # stokeslet velocity near a wall. see Blake and Chwang (1973).
+    # evaluated at r due to force F at r0
+    # wall is assumed to be at z=0
+
+    δ(i,j) = ==(i,j) # Kroneker delta
+
+    Rvec = rvec - rvec0
+    R = norm(Rvec)
+    Rimvec = rvec - rvec0 # image system radius vector
+    h = rvec0[3] # height above wall
+    Rimvec[3] += 2*h
+    Rim = norm(Rimvec)
+
+    Oseen_tensor = zeros(3,3)#(I + Rvec*Rvec'/ R^2 ) / R
+
+    for i = 1:3
+        for j = 1:3 
+
+            Oseen_tensor[i,j] += (
+            (δ(i,j)/R + Rvec[i]*Rvec[j]/R^3) 
+            -(δ(i,j)/Rim + Rimvec[i]*Rimvec[j]/Rim^3)
+            )
+
+            for k = 1:3 # sum
+
+            Oseen_tensor[i,j] += (
+
+            +2*h/Rim^3*(δ(j,1)*δ(1,k) + δ(j,2)*δ(2,k) - δ(j,3)*δ(3,k) )*
+                (
+                 h*(δ(i,k) - 3*Rimvec[i]*Rimvec[k]/Rim^2)
+
+                 +δ(i,3)*Rimvec[k]
+                 -δ(i,k)*Rimvec[3]
+                 -δ(k,3)*Rimvec[i]
+                 +3*Rimvec[i]*Rimvec[k]*Rimvec[3]/Rim^2
+                )
+
+            )
+
+            end
+        end
+    end
+
+
+    return  Oseen_tensor
+    # corresponds with Mathematica
+end
+
+
 function make_stokeslet_velocity_wall(Fvec,rvec,rvec0)
     # stokeslet velocity near a wall. see Blake and Chwang (1973).
     # evaluated at r due to force F at r0
@@ -756,3 +806,6 @@ function make_dipole_force(rvecs,mvecs,Cdip,h)
 
     return fdip_vecs*Cdip/h
 end
+
+
+
