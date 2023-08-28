@@ -7,30 +7,48 @@ using Rotations
 using StaticArrays
 using HDF5
 using DifferentialEquations
+using DelimitedFiles
 
-include("../functions/physics_functions.jl")
-include("../functions/finite_difference_functions.jl")
-include("../functions/filament_geometry_functions.jl")
+include("../../functions/physics_functions.jl")
+include("../../functions/finite_difference_functions.jl")
+include("../../functions/filament_geometry_functions.jl")
+
+
+radius_scales = [1,1/2,1/3,1/4,1/6]
+
+for radius_scale = radius_scales
+iter = 1
+
+ds = zeros(0)
+Flifts = zeros(0)
+Torques = zeros(0)
+Torques_rod = zeros(0)
+
+for d = 0.02:0.01:2
 
 # make the initial shape
-
 regλ = 0.1 #Tikhonov regularization parameter https://docs.juliahub.com/RegularizationTools/W7b5l/0.2.0/theory/theory/
-n = 50
-h = 1/n # distance between 2 pts 
-ρ = h/sqrt(exp(1)) # radius of filament
-d = 0.1 # height
+global n = round(Int, 60*radius_scale)+1
+h = 1/(n-1) # distance between 2 pts 
+global ρ = 2*h/sqrt(exp(1)) # radius of filament
+if d < ρ
+    continue
+end
+#d = 0.1 # height
 
 
-wint = 11 # how many points in the middle section
-w = wint * h / 2 # 2w/h should be integer
+#wint = 12*radius_scale # how many points in the middle section
+global w = 0.1#wint * h / 2 # 2w/h should be integer
 r0 = exp(-pi/2)*w
 θmax = log( exp(pi/2) * (1-2*w+2*sqrt(2)*w) / (2*sqrt(2)*w) )
 armlength = 1/2 - w
 
+println("n = ",n)
 println("ρ/L = ", ρ)
 println("h/ρ = ", d/ρ)
 println("w = ", w)
 println("h = ",d)
+
 
 
 # # initialize the shape
@@ -42,9 +60,8 @@ rvecs = zeros(n,3)
 # a convuluted function to make the shape
 θ = θmax
 for i = 1:n # first arm
-    global θ = log( -h/sqrt(2)/r0 + exp(θ) )
     #println(θ)
-    if θ < pi/2
+    if θ < pi/2 + 0.001
         ycoord = w 
         for k = i:n # middle section
             #println(ycoord)
@@ -69,17 +86,37 @@ for i = 1:n # first arm
 
     rvecs[i,1] = r0 * exp(θ) * cos(θ)
     rvecs[i,2] = r0 * exp(θ) * sin(θ)
+
+    θ = log( -h/sqrt(2)/r0 + exp(θ) )
 end
 
 
-renormalize_length!(rvecs)
-rvecs = rvecs .- make_center_of_mass(rvecs)'
+renormalize_length2!(rvecs)
+# rvecs = rvecs .- make_center_of_mass(rvecs)'
 rvecs[:,3] = d*ones(size(rvecs[:,3]))
 
-display(Plots.scatter(rvecs[:,1],rvecs[:,2],aspect_ratio=:equal))
+# println(rvecs[1,:])
+# println(rvecs[end,:])
+# println(size(rvecs))
+# println(make_length_of_filament2(rvecs))
+
+if iter == 1
+if radius_scale == 1
+    display(Plots.scatter(rvecs[:,1],rvecs[:,2],aspect_ratio=:equal))
+    #display(Plots.scatter(rvecs))
+else
+    display(Plots.scatter!(rvecs[:,1],rvecs[:,2],aspect_ratio=:equal)) 
+    #display(Plots.scatter(rvecs))
+end
+end
+
 
 tvecs = make_tvecs(rvecs)
 
+
+hs = h*ones(n) # corresponding differential lengths in the integral
+hs[1] = h/2
+hs[end] = h/2 
 
 # integralMat such that integralMat.farr is the integral
 integralMat = zeros(3n,3n)
@@ -93,7 +130,7 @@ for y = 1:n
                 for i = 1:3
                     integralMat[3*(y-1)+j, 3*(x-1)+i] = 1/(8*pi) * (
                         oseen_tensor[i,j]
-                    )*h
+                    )*hs[x]
                 end #end i
             end #end j
         else
@@ -167,10 +204,28 @@ fvecs = reshape(farr[1:3*n], 3, n)'
 # display(Plots.plot(fvecs_local_t))
 # display(Plots.plot!(fvecs_t[:,:]))
 
-Flift = sum(fvecs[:,3]*h)
+Flift = sum(fvecs[:,3].*hs)
 println("Flift = ",Flift)
 
-Torque = sum( make_cross_product(rvecs,fvecs)*h  )
+Torque = sum( make_cross_product(rvecs,fvecs).*hs  )
 println("Torque for rod = ",ζperp0/12)
 println("Torque = ",Torque)
 println("*********")
+
+append!(ds, d)
+append!(Flifts, Flift)
+append!(Torques, Torque)
+append!(Torques_rod, ζperp0/12)
+
+iter += 1
+end # end d
+
+open("./simulation_results/filament_lift/simulate_lift_force/results" * string(1/radius_scale) * ".txt", "w") do io
+    writedlm(io, ["w" w*ones(size(ds')); "radius" ρ*ones(size(ds')); "n" n*ones(size(ds')); "heights" ds'; "lift force" Flifts'; "torques" Torques'; "torques_rod" Torques_rod'])
+end
+
+end # end radius scale
+
+#Plots.scatter(ds,Flifts)
+# Plots.scatter(ds,Torques)
+# Plots.scatter!(ds,Torques_rod)

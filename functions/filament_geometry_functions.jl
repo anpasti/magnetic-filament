@@ -130,7 +130,16 @@ function make_length_of_filament(rvecs)
     return L*(n+1)/n # adjustment to include the half distances at each end
 end
 
+function make_length_of_filament2(rvecs)
 
+    n = size(rvecs,1)
+    L = 0
+    for i = 1:n-1
+        L += norm(rvecs[i,:] - rvecs[i+1,:])
+    end
+
+    return L # when half distances at each end is NOT needed
+end
 
 function renormalize_length!(rvecs)
     # rescale all the lengths between consecutive so that total filament length is 1
@@ -140,6 +149,28 @@ function renormalize_length!(rvecs)
         rveci = rvecs[i+1,:] - rvecs[i,:]
 
         renorm = 1 - 1/n/norm(rveci)
+        α1 = (n-i)*renorm / n
+        α2 = i*renorm / n
+
+        for j = 1:i
+            rvecs[j,:] += α1*rveci
+        end
+        for j = i+1:n
+            rvecs[j,:] -= α2*rveci
+        end
+
+    end
+end
+
+function renormalize_length2!(rvecs)
+    # rescale all the lengths between consecutive so that total filament length is 1
+    # do NOT include the half lengths at each end
+    n = size(rvecs,1)
+
+    for i = 1:n-1 # for each segment
+        rveci = rvecs[i+1,:] - rvecs[i,:]
+
+        renorm = 1 - 1/(n-1)/norm(rveci)
         α1 = (n-i)*renorm / n
         α2 = i*renorm / n
 
